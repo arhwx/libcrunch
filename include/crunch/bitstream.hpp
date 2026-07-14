@@ -62,6 +62,49 @@ inline result<bit_reader> bit_reader::from_end(const std::byte *data,
   return r;
 }
 
+// FSE table descriptions are read forward, least significant bit first
+// (4.1.1). Peeking past the end yields zero bits; only consuming past
+// the end flags overflow.
+class forward_bit_reader {
+public:
+  forward_bit_reader(const std::byte *data, std::size_t size)
+      : data_(data), size_(size) {}
+
+  std::uint32_t peek(unsigned count) const {
+    const std::size_t first = pos_ / 8;
+    const unsigned shift = pos_ % 8;
+    std::uint64_t acc = 0;
+    for (unsigned got = 0; got < shift + count && first + got / 8 < size_;
+         got += 8)
+      acc |= std::to_integer<std::uint64_t>(data_[first + got / 8]) << got;
+    return static_cast<std::uint32_t>(acc >> shift) &
+           static_cast<std::uint32_t>((std::uint64_t{1} << count) - 1);
+  }
+
+  void advance(unsigned count) {
+    pos_ += count;
+    if (pos_ > size_ * 8) {
+      overflowed_ = true;
+      pos_ = size_ * 8;
+    }
+  }
+
+  std::uint32_t read(unsigned count) {
+    const std::uint32_t value = peek(count);
+    advance(count);
+    return value;
+  }
+
+  std::size_t bits_read() const { return pos_; }
+  bool overflowed() const { return overflowed_; }
+
+private:
+  const std::byte *data_ = nullptr;
+  std::size_t size_ = 0;
+  std::size_t pos_ = 0;
+  bool overflowed_ = false;
+};
+
 inline std::uint32_t bit_reader::read(unsigned count) {
   if (count > bits_left_) {
     overflowed_ = true;

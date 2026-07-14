@@ -16,6 +16,7 @@ enum class error : std::uint8_t {
   output_too_small,      // destination cannot hold the decoded content
   checksum_mismatch,     // 3.1.1
   content_size_mismatch, // output differs from Frame_Content_Size, 3.1.1.1.4
+  bad_distribution,      // fse probabilities do not fit the table, 4.1.1
   unsupported,           // valid input the decoder cannot handle yet
 };
 
