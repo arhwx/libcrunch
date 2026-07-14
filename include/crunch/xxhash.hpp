@@ -8,8 +8,7 @@
 namespace crunch {
 
 // XXH64, https://github.com/Cyan4973/xxHash
-// The frame content checksum is the low 4 bytes of this hash over the
-// decoded content, seeded with zero (3.1.1).
+// The content checksum is the low 4 bytes of this hash, seed zero (3.1.1).
 
 inline constexpr std::uint64_t xxh_prime_1 = 0x9E3779B185EBCA87;
 inline constexpr std::uint64_t xxh_prime_2 = 0xC2B2AE3D27D4EB4F;

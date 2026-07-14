@@ -9,9 +9,7 @@ namespace {
 
 std::string data_dir;
 
-// expected hashes come from xxhsum 0.8.3; the input is the byte
-// sequence 0, 1, 2, ... truncated to each size, covering the empty,
-// short, single-stripe, and stripe-plus-tail paths
+// expected hashes from xxhsum 0.8.3 over the byte sequence 0, 1, 2, ...
 void test_vectors() {
   std::array<std::byte, 100> buf{};
   for (std::size_t i = 0; i < buf.size(); ++i)
@@ -31,8 +29,7 @@ void test_vectors() {
     CHECK(crunch::xxh64(buf.data(), v.size) == v.hash);
 }
 
-// the low 4 bytes of the content hash are what the frame stores as its
-// checksum (3.1.1);
+// frames store the low 4 bytes of the content hash as the checksum (3.1.1)
 void test_content_checksum() {
   const auto content = test::read_file(data_dir + "/hello.txt");
   CHECK(content.size() == 50);

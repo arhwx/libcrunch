@@ -8,9 +8,15 @@ namespace crunch {
 enum class error : std::uint8_t {
   none = 0,
   truncated_input,
-  reserved_bit_set,    // frame header reserved bit, 3.1.1.1.1.4
-  reserved_block_type, // 3.1.1.2.2
-  corrupt_bitstream,   // missing sentinel bit or read past stream start
+  reserved_bit_set,      // frame header reserved bit, 3.1.1.1.1.4
+  reserved_block_type,   // 3.1.1.2.2
+  corrupt_bitstream,     // missing sentinel bit or read past stream start
+  bad_magic,             // neither a zstd nor a skippable frame
+  block_too_large,       // over Block_Maximum_Size, 3.1.1.2.4
+  output_too_small,      // destination cannot hold the decoded content
+  checksum_mismatch,     // 3.1.1
+  content_size_mismatch, // output differs from Frame_Content_Size, 3.1.1.1.4
+  unsupported,           // valid input the decoder cannot handle yet
 };
 
 template <typename T> class result {
