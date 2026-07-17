@@ -55,10 +55,39 @@ void test_bit_reader() {
   CHECK(!crunch::bit_reader::from_end(bytes(no_sentinel), 0));
 }
 
+void test_peek_advance() {
+  // 0xb5 = 1011 0101: sentinel on top, 7 data bits
+  const unsigned char raw[] = {0xb5};
+  auto r = crunch::bit_reader::from_end(bytes(raw), sizeof(raw));
+  CHECK(r);
+  auto &br = *r;
+  CHECK(br.bits_left() == 7);
+  CHECK(br.peek(4) == 0b0110);
+  CHECK(br.peek(4) == 0b0110); // peeking does not consume
+  br.advance(4);
+  CHECK(br.bits_left() == 3);
+  CHECK(br.peek(4) == 0b1010); // past the start, zero-padded
+  br.advance(3);
+  CHECK(br.peek(4) == 0);
+  CHECK(!br.overflowed());
+  br.advance(1);
+  CHECK(br.overflowed());
+
+  // peeks spanning byte boundaries
+  const unsigned char raw2[] = {0xff, 0x0f, 0x01};
+  auto r2 = crunch::bit_reader::from_end(bytes(raw2), sizeof(raw2));
+  CHECK(r2);
+  auto &br2 = *r2;
+  CHECK(br2.peek(12) == 0x0ff);
+  br2.advance(12);
+  CHECK(br2.peek(8) == 0xf0);
+}
+
 } // namespace
 
 int main() {
   test_le_reads();
   test_bit_reader();
+  test_peek_advance();
   return test::report("bitstream");
 }
