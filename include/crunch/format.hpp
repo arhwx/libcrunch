@@ -256,7 +256,7 @@ struct dictionary {
   std::optional<fse_table> offset_table;
   std::optional<fse_table> match_length_table;
   std::optional<fse_table> literals_length_table;
-  repeat_offsets recent_offsets; // each entry must be < content_size
+  repeat_offsets recent_offsets; // each entry nonzero, at most content_size
   const std::byte *content = nullptr;
   std::size_t content_size = 0;
 };

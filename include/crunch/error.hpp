@@ -19,6 +19,8 @@ enum class error : std::uint8_t {
   bad_distribution,      // fse probabilities do not fit the table, 4.1.1
   bad_weights,           // huffman weights cannot form a prefix code, 4.2.1
   missing_table,         // treeless or repeat mode with no prior table
+  bad_dictionary,        // dictionary violates the format in section 5
+  wrong_dictionary,      // frame names a dictionary that was not provided
   unsupported,           // valid input the decoder cannot handle yet
 };
 
