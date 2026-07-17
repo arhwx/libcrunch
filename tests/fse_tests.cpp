@@ -100,7 +100,7 @@ void test_parse_distribution() {
   CHECK(r);
   if (!r)
     return;
-  const auto &dist = r.value();
+  const auto &dist = *r;
   CHECK(dist.accuracy_log == 6);
   CHECK(dist.symbol_count == 36);
   CHECK(dist.consumed == sizeof(desc));
@@ -122,10 +122,10 @@ void test_repeat_flags() {
   if (!r)
     return;
   const std::int16_t want[] = {2, 0, 0, 0, 0, 1, 29};
-  CHECK(r.value().accuracy_log == 5);
-  CHECK(r.value().symbol_count == 7);
+  CHECK(r->accuracy_log == 5);
+  CHECK(r->symbol_count == 7);
   for (std::size_t i = 0; i < 7; ++i)
-    CHECK(r.value().counts[i] == want[i]);
+    CHECK(r->counts[i] == want[i]);
 }
 
 void test_bad_distributions() {

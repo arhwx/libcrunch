@@ -20,7 +20,7 @@ void test_bit_reader() {
   const unsigned char raw[] = {0x47, 0x01};
   auto r = crunch::bit_reader::from_end(bytes(raw), sizeof(raw));
   CHECK(r);
-  auto &br = r.value();
+  auto &br = *r;
   CHECK(br.bits_left() == 8);
   CHECK(br.read(3) == 0b010);
   CHECK(br.read(5) == 0b00111);
@@ -33,7 +33,7 @@ void test_bit_reader() {
   const unsigned char raw2[] = {0xb4, 0x25};
   auto r2 = crunch::bit_reader::from_end(bytes(raw2), sizeof(raw2));
   CHECK(r2);
-  auto &br2 = r2.value();
+  auto &br2 = *r2;
   CHECK(br2.bits_left() == 13);
   CHECK(br2.read(5) == 0b00101);
   CHECK(br2.read(8) == 0xb4);
@@ -43,7 +43,7 @@ void test_bit_reader() {
   const unsigned char raw3[] = {0xff, 0x0f, 0x01};
   auto r3 = crunch::bit_reader::from_end(bytes(raw3), sizeof(raw3));
   CHECK(r3);
-  auto &br3 = r3.value();
+  auto &br3 = *r3;
   CHECK(br3.bits_left() == 16);
   CHECK(br3.read(12) == 0x0ff);
   CHECK(br3.read(4) == 0xf);

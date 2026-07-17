@@ -27,8 +27,10 @@ public:
 
   explicit operator bool() const { return err_ == error::none; }
   error err() const { return err_; }
-  T &value() { return value_; }
-  const T &value() const { return value_; }
+  T &operator*() { return value_; }
+  const T &operator*() const { return value_; }
+  T *operator->() { return &value_; }
+  const T *operator->() const { return &value_; }
 
 private:
   T value_{};

@@ -24,7 +24,7 @@ void check_roundtrip(const std::string &name) {
   auto r = crunch::decode_frame(frame.data(), frame.size(), out.data(),
                                 out.size(), consumed);
   CHECK(r);
-  CHECK(r.value() == original.size());
+  CHECK(*r == original.size());
   CHECK(consumed == frame.size());
   CHECK(std::memcmp(out.data(), original.data(), original.size()) == 0);
 }
@@ -51,7 +51,7 @@ void test_multi_frame() {
     if (!r)
       return;
     off += consumed;
-    written += r.value();
+    written += *r;
   }
   CHECK(written == out.size());
 }
@@ -63,7 +63,7 @@ void test_skippable_frame() {
   auto r =
       crunch::decode_frame(bytes(skip), sizeof(skip), nullptr, 0, consumed);
   CHECK(r);
-  CHECK(r.value() == 0);
+  CHECK(*r == 0);
   CHECK(consumed == sizeof(skip));
 
   auto trunc =

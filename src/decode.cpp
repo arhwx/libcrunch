@@ -33,7 +33,7 @@ result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
       parse_frame_header(src + off, src_size - off, header_size);
   if (!parsed)
     return parsed.err();
-  const frame_header &hdr = parsed.value();
+  const frame_header &hdr = *parsed;
   off += header_size;
 
   const std::uint64_t block_max =
@@ -45,12 +45,12 @@ result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
     if (!blk)
       return blk.err();
     off += block_header_size;
-    last = blk.value().last_block;
-    const std::size_t block_size = blk.value().block_size;
+    last = blk->last_block;
+    const std::size_t block_size = blk->block_size;
     if (block_size > block_max)
       return error::block_too_large;
 
-    switch (blk.value().type) {
+    switch (blk->type) {
     case block_type::raw:
       if (src_size - off < block_size)
         return error::truncated_input;

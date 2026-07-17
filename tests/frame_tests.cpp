@@ -15,38 +15,40 @@ void test_frame_header_forms() {
 
   // smallest form: empty descriptor plus 1 KB window
   const unsigned char minimal[] = {0x00, 0x00};
-  auto r = crunch::parse_frame_header(bytes(minimal), sizeof(minimal), consumed);
+  auto r =
+      crunch::parse_frame_header(bytes(minimal), sizeof(minimal), consumed);
   CHECK(r);
   CHECK(consumed == 2);
-  CHECK(r.value().window_size == 1024);
-  CHECK(!r.value().content_size);
-  CHECK(r.value().dictionary_id == 0);
-  CHECK(!r.value().single_segment);
-  CHECK(!r.value().has_checksum);
+  CHECK(r->window_size == 1024);
+  CHECK(!r->content_size);
+  CHECK(r->dictionary_id == 0);
+  CHECK(!r->single_segment);
+  CHECK(!r->has_checksum);
 
   // 2-byte content size is stored offset by 256
   const unsigned char fcs2[] = {0x40, 0x58, 0x00, 0x01};
   auto r2 = crunch::parse_frame_header(bytes(fcs2), sizeof(fcs2), consumed);
   CHECK(r2);
   CHECK(consumed == 4);
-  CHECK(r2.value().window_size == 2u * 1024 * 1024);
-  CHECK(r2.value().content_size == 512u);
+  CHECK(r2->window_size == 2u * 1024 * 1024);
+  CHECK(r2->content_size == 512u);
 
   // 2-byte dictionary id
   const unsigned char dict2[] = {0x02, 0x00, 0x34, 0x12};
   auto r3 = crunch::parse_frame_header(bytes(dict2), sizeof(dict2), consumed);
   CHECK(r3);
   CHECK(consumed == 4);
-  CHECK(r3.value().dictionary_id == 0x1234);
+  CHECK(r3->dictionary_id == 0x1234);
 
   // largest form: window byte, 4-byte dictionary id, 8-byte content size
   const unsigned char maximal[] = {0xc3, 0x00, 0x78, 0x56, 0x34, 0x12, 0x08,
                                    0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01};
-  auto r4 = crunch::parse_frame_header(bytes(maximal), sizeof(maximal), consumed);
+  auto r4 =
+      crunch::parse_frame_header(bytes(maximal), sizeof(maximal), consumed);
   CHECK(r4);
   CHECK(consumed == crunch::frame_header_size_max);
-  CHECK(r4.value().dictionary_id == 0x12345678);
-  CHECK(r4.value().content_size == 0x0102030405060708ull);
+  CHECK(r4->dictionary_id == 0x12345678);
+  CHECK(r4->content_size == 0x0102030405060708ull);
 
   const unsigned char reserved[] = {0x08, 0x00};
   auto bad =
@@ -68,16 +70,16 @@ void test_block_header() {
   const unsigned char raw_blk[] = {0x21, 0x00, 0x00};
   auto r = crunch::parse_block_header(bytes(raw_blk), sizeof(raw_blk));
   CHECK(r);
-  CHECK(r.value().last_block);
-  CHECK(r.value().type == crunch::block_type::raw);
-  CHECK(r.value().block_size == 4);
+  CHECK(r->last_block);
+  CHECK(r->type == crunch::block_type::raw);
+  CHECK(r->block_size == 4);
 
   // 0x0b = 0b1011: last, rle, size 1
   const unsigned char rle_blk[] = {0x0b, 0x00, 0x00};
   auto r2 = crunch::parse_block_header(bytes(rle_blk), sizeof(rle_blk));
   CHECK(r2);
-  CHECK(r2.value().type == crunch::block_type::rle);
-  CHECK(r2.value().block_size == 1);
+  CHECK(r2->type == crunch::block_type::rle);
+  CHECK(r2->block_size == 1);
 
   const unsigned char reserved_blk[] = {0x06, 0x00, 0x00};
   auto bad =
@@ -112,18 +114,18 @@ void test_real_frames() {
     auto hdr = crunch::parse_frame_header(p + 4, size - 4, consumed);
     CHECK(hdr);
     CHECK(consumed == 2);
-    CHECK(hdr.value().single_segment);
-    CHECK(hdr.value().has_checksum);
-    CHECK(hdr.value().content_size == 50u);
-    CHECK(hdr.value().window_size == 50);
+    CHECK(hdr->single_segment);
+    CHECK(hdr->has_checksum);
+    CHECK(hdr->content_size == 50u);
+    CHECK(hdr->window_size == 50);
 
     std::size_t off = 4 + consumed;
     auto blk = crunch::parse_block_header(p + off, size - off);
     CHECK(blk);
-    CHECK(blk.value().last_block);
-    CHECK(blk.value().type == crunch::block_type::compressed);
-    CHECK(blk.value().block_size == 19);
-    off += crunch::block_header_size + blk.value().block_size;
+    CHECK(blk->last_block);
+    CHECK(blk->type == crunch::block_type::compressed);
+    CHECK(blk->block_size == 19);
+    off += crunch::block_header_size + blk->block_size;
     CHECK(off + 4 == size);
     CHECK(crunch::read_le32(p + off) == 0x847d1aeb);
   }
@@ -139,10 +141,10 @@ void test_real_frames() {
     auto hdr = crunch::parse_frame_header(p + 4, size - 4, consumed);
     CHECK(hdr);
     CHECK(consumed == 2);
-    CHECK(!hdr.value().single_segment);
-    CHECK(!hdr.value().content_size);
-    CHECK(hdr.value().has_checksum);
-    CHECK(hdr.value().window_size == 2u * 1024 * 1024);
+    CHECK(!hdr->single_segment);
+    CHECK(!hdr->content_size);
+    CHECK(hdr->has_checksum);
+    CHECK(hdr->window_size == 2u * 1024 * 1024);
   }
 }
 
