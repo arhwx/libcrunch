@@ -18,6 +18,7 @@ enum class error : std::uint8_t {
   content_size_mismatch, // output differs from Frame_Content_Size, 3.1.1.1.4
   bad_distribution,      // fse probabilities do not fit the table, 4.1.1
   bad_weights,           // huffman weights cannot form a prefix code, 4.2.1
+  missing_table,         // treeless literals with no prior table, 3.1.1.3.1.1
   unsupported,           // valid input the decoder cannot handle yet
 };
 
