@@ -97,12 +97,32 @@ void test_errors() {
   CHECK(crunch::decode_frame(frame.data(), frame.size(), out.data(), out.size(),
                              consumed)
             .err() == crunch::error::checksum_mismatch);
+}
 
-  // hello.zst holds a compressed block, not implemented yet
-  const auto compressed = test::read_file(data_dir + "/hello.zst");
-  CHECK(crunch::decode_frame(compressed.data(), compressed.size(), out.data(),
-                             out.size(), consumed)
-            .err() == crunch::error::unsupported);
+// both frames hold the same compressed block behind different descriptors
+void test_compressed_block() {
+  const auto original = test::read_file(data_dir + "/hello.txt");
+  CHECK(original.size() == 50);
+  if (original.size() != 50)
+    return;
+
+  for (const char *name : {"hello.zst", "hello_piped.zst"}) {
+    const auto frame = test::read_file(data_dir + "/" + std::string(name));
+    CHECK(!frame.empty());
+    if (frame.empty())
+      return;
+
+    std::vector<std::byte> out(original.size());
+    std::size_t consumed = 0;
+    auto r = crunch::decode_frame(frame.data(), frame.size(), out.data(),
+                                  out.size(), consumed);
+    CHECK(r);
+    if (!r)
+      continue;
+    CHECK(*r == original.size());
+    CHECK(consumed == frame.size());
+    CHECK(std::memcmp(out.data(), original.data(), original.size()) == 0);
+  }
 }
 
 } // namespace
@@ -114,5 +134,6 @@ int main(int argc, char **argv) {
   test_multi_frame();
   test_skippable_frame();
   test_errors();
+  test_compressed_block();
   return test::report("decode");
 }

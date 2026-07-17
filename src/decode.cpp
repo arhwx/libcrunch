@@ -1,11 +1,81 @@
 #include <crunch/bitstream.hpp>
 #include <crunch/decode.hpp>
 #include <crunch/frame.hpp>
+#include <crunch/literals.hpp>
+#include <crunch/sequences.hpp>
 #include <crunch/xxhash.hpp>
 
 #include <cstring>
+#include <vector>
 
 namespace crunch {
+namespace {
+
+// entropy state shared by a frame's compressed blocks
+struct frame_state {
+  huffman_table literals_table;
+  sequence_tables tables;
+  repeat_offsets recent;
+  bool have_literals_table = false;
+  std::vector<std::byte> literals; // scratch, sized on first use
+};
+
+error decode_compressed_block(const std::byte *src, std::size_t size,
+                              frame_state &state, std::byte *dst,
+                              std::size_t dst_capacity, std::size_t &written,
+                              std::uint64_t block_max) {
+  auto lit_header = parse_literals_section_header(src, size);
+  if (!lit_header)
+    return lit_header.err();
+  if (lit_header->regenerated_size > block_max)
+    return error::block_too_large;
+  if (state.literals.empty())
+    state.literals.resize(block_size_cap);
+
+  const error lit_err = decode_literals(
+      *lit_header, src, size, state.literals_table, state.have_literals_table,
+      state.literals.data(), state.literals.size());
+  if (lit_err != error::none)
+    return lit_err;
+
+  std::size_t literal_bytes = 0;
+  switch (lit_header->type) {
+  case literals_block_type::raw:
+    literal_bytes = lit_header->regenerated_size;
+    break;
+  case literals_block_type::rle:
+    literal_bytes = 1;
+    break;
+  default:
+    literal_bytes = lit_header->compressed_size;
+    break;
+  }
+  const std::size_t section = lit_header->header_size + literal_bytes;
+
+  auto seq_header =
+      parse_sequences_section_header(src + section, size - section);
+  if (!seq_header)
+    return seq_header.err();
+  std::vector<sequence> sequences(seq_header->sequence_count);
+  const error seq_err =
+      decode_sequences(*seq_header, src + section, size - section, state.tables,
+                       sequences.data());
+  if (seq_err != error::none)
+    return seq_err;
+
+  const std::size_t before = written;
+  const error exec_err = execute_sequences(
+      sequences.data(), sequences.size(), state.literals.data(),
+      lit_header->regenerated_size, state.recent, dst, dst_capacity, written);
+  if (exec_err != error::none)
+    return exec_err;
+  // Block_Maximum_Size caps the regenerated size too, 3.1.1.2.4
+  if (written - before > block_max)
+    return error::block_too_large;
+  return error::none;
+}
+
+} // namespace
 
 result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
                                  std::byte *dst, std::size_t dst_capacity,
@@ -39,6 +109,7 @@ result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
   const std::uint64_t block_max =
       hdr.window_size < block_size_cap ? hdr.window_size : block_size_cap;
   std::size_t written = 0;
+  frame_state state;
 
   for (bool last = false; !last;) {
     const auto blk = parse_block_header(src + off, src_size - off);
@@ -69,9 +140,16 @@ result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
       off += 1;
       written += block_size;
       break;
-    case block_type::compressed:
-      // needs entropy decoding, not built yet
-      return error::unsupported;
+    case block_type::compressed: {
+      if (src_size - off < block_size)
+        return error::truncated_input;
+      const error err = decode_compressed_block(
+          src + off, block_size, state, dst, dst_capacity, written, block_max);
+      if (err != error::none)
+        return err;
+      off += block_size;
+      break;
+    }
     case block_type::reserved:
       return error::reserved_block_type;
     }

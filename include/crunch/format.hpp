@@ -132,6 +132,7 @@ struct sequences_section_header {
   compression_mode literals_lengths_mode = compression_mode::predefined;
   compression_mode offsets_mode = compression_mode::predefined;
   compression_mode match_lengths_mode = compression_mode::predefined;
+  std::uint8_t header_size = 0; // count bytes plus the modes byte
 };
 
 struct sequence {
