@@ -227,8 +227,8 @@ void test_execution() {
   crunch::repeat_offsets recent;
   std::byte out[32];
   std::size_t written = 0;
-  CHECK(crunch::execute_sequences(seqs, 2, bytes(lits), sizeof(lits), recent,
-                                  out, sizeof(out),
+  CHECK(crunch::execute_sequences(seqs, 2, bytes(lits), sizeof(lits), nullptr,
+                                  0, recent, out, sizeof(out),
                                   written) == crunch::error::none);
   CHECK(written == 12);
   CHECK(std::memcmp(out, "abccccddddef", 12) == 0);
@@ -250,8 +250,8 @@ void test_repeat_offsets() {
   recent.value = {{2, 3, 5}};
   std::byte out[32];
   std::size_t written = 0;
-  CHECK(crunch::execute_sequences(seqs, 3, bytes(lits), sizeof(lits), recent,
-                                  out, sizeof(out),
+  CHECK(crunch::execute_sequences(seqs, 3, bytes(lits), sizeof(lits), nullptr,
+                                  0, recent, out, sizeof(out),
                                   written) == crunch::error::none);
   CHECK(written == 16);
   CHECK(std::memcmp(out, "abcdefghdededddd", 16) == 0);
@@ -269,8 +269,8 @@ void test_bad_execution() {
   {
     const crunch::sequence seq = {0, 3, 7};
     crunch::repeat_offsets recent;
-    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), recent,
-                                    out, sizeof(out), written) ==
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
+                                    0, recent, out, sizeof(out), written) ==
           crunch::error::corrupt_bitstream);
   }
 
@@ -279,8 +279,8 @@ void test_bad_execution() {
     const crunch::sequence seq = {0, 1, 3};
     crunch::repeat_offsets recent;
     written = 0;
-    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), recent,
-                                    out, sizeof(out), written) ==
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
+                                    0, recent, out, sizeof(out), written) ==
           crunch::error::corrupt_bitstream);
   }
 
@@ -289,8 +289,8 @@ void test_bad_execution() {
     const crunch::sequence seq = {9, 3, 4};
     crunch::repeat_offsets recent;
     written = 0;
-    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), recent,
-                                    out, sizeof(out), written) ==
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
+                                    0, recent, out, sizeof(out), written) ==
           crunch::error::corrupt_bitstream);
   }
 
@@ -299,10 +299,34 @@ void test_bad_execution() {
     const crunch::sequence seq = {3, 3, 4};
     crunch::repeat_offsets recent;
     written = 0;
-    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), recent,
-                                    out, 4, written) ==
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
+                                    0, recent, out, 4, written) ==
           crunch::error::output_too_small);
   }
+}
+
+// a match starting in the dictionary content and crossing into the output
+void test_history() {
+  const unsigned char history[] = {'a', 'b'};
+  const unsigned char lits[] = {'C'};
+  const crunch::sequence seq = {1, 4, 6};
+
+  crunch::repeat_offsets recent;
+  std::byte out[16];
+  std::size_t written = 0;
+  CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits),
+                                  bytes(history), sizeof(history), recent, out,
+                                  sizeof(out), written) == crunch::error::none);
+  CHECK(written == 5);
+  CHECK(std::memcmp(out, "CabCa", 5) == 0);
+
+  // offset 6 reaches past the two history bytes
+  const crunch::sequence far = {0, 1, 9};
+  written = 0;
+  CHECK(crunch::execute_sequences(&far, 1, bytes(lits), sizeof(lits),
+                                  bytes(history), sizeof(history), recent, out,
+                                  sizeof(out),
+                                  written) == crunch::error::corrupt_bitstream);
 }
 
 } // namespace
@@ -317,5 +341,6 @@ int main() {
   test_execution();
   test_repeat_offsets();
   test_bad_execution();
+  test_history();
   return test::report("sequences");
 }

@@ -171,6 +171,7 @@ error decode_sequences(const sequences_section_header &header,
 
 error execute_sequences(const sequence *sequences, std::size_t count,
                         const std::byte *literals, std::size_t literals_size,
+                        const std::byte *history, std::size_t history_size,
                         repeat_offsets &recent, std::byte *dst,
                         std::size_t dst_capacity, std::size_t &written) {
   std::size_t literal_pos = 0;
@@ -205,13 +206,15 @@ error execute_sequences(const sequence *sequences, std::size_t count,
     literal_pos += seq.literals_length;
     written += seq.literals_length;
 
-    if (offset > written)
+    if (offset > written + history_size)
       return error::corrupt_bitstream;
     if (seq.match_length > dst_capacity - written)
       return error::output_too_small;
-    // overlapping matches repeat the pattern, so copy byte by byte
+    // overlapping matches repeat the pattern, so copy byte by byte; a
+    // match may start in the history and run into the frame's output
     for (std::uint32_t j = 0; j < seq.match_length; ++j, ++written)
-      dst[written] = dst[written - offset];
+      dst[written] = offset > written ? history[history_size - offset + written]
+                                      : dst[written - offset];
   }
 
   const std::size_t leftover = literals_size - literal_pos;

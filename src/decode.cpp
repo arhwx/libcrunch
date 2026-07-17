@@ -17,6 +17,8 @@ struct frame_state {
   sequence_tables tables;
   repeat_offsets recent;
   bool have_literals_table = false;
+  const std::byte *history = nullptr; // dictionary content
+  std::size_t history_size = 0;
   std::vector<std::byte> literals; // scratch, sized on first use
 };
 
@@ -66,7 +68,8 @@ error decode_compressed_block(const std::byte *src, std::size_t size,
   const std::size_t before = written;
   const error exec_err = execute_sequences(
       sequences.data(), sequences.size(), state.literals.data(),
-      lit_header->regenerated_size, state.recent, dst, dst_capacity, written);
+      lit_header->regenerated_size, state.history, state.history_size,
+      state.recent, dst, dst_capacity, written);
   if (exec_err != error::none)
     return exec_err;
   // Block_Maximum_Size caps the regenerated size too, 3.1.1.2.4
@@ -80,6 +83,13 @@ error decode_compressed_block(const std::byte *src, std::size_t size,
 result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
                                  std::byte *dst, std::size_t dst_capacity,
                                  std::size_t &consumed) {
+  return decode_frame(src, src_size, dst, dst_capacity, consumed, nullptr);
+}
+
+result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
+                                 std::byte *dst, std::size_t dst_capacity,
+                                 std::size_t &consumed,
+                                 const dictionary *dict) {
   if (src_size < 4)
     return error::truncated_input;
   const std::uint32_t magic = read_le32(src);
@@ -106,10 +116,30 @@ result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
   const frame_header &hdr = *parsed;
   off += header_size;
 
+  if (hdr.dictionary_id != 0 &&
+      (dict == nullptr || dict->id != hdr.dictionary_id))
+    return error::wrong_dictionary;
+
   const std::uint64_t block_max =
       hdr.window_size < block_size_cap ? hdr.window_size : block_size_cap;
   std::size_t written = 0;
   frame_state state;
+  if (dict != nullptr) {
+    state.history = dict->content;
+    state.history_size = dict->content_size;
+    state.recent = dict->recent_offsets;
+    if (dict->literals_huffman) {
+      state.literals_table = *dict->literals_huffman;
+      state.have_literals_table = true;
+    }
+    if (dict->offset_table && dict->match_length_table &&
+        dict->literals_length_table) {
+      state.tables.offsets = *dict->offset_table;
+      state.tables.match_lengths = *dict->match_length_table;
+      state.tables.literals_lengths = *dict->literals_length_table;
+      state.tables.valid = true;
+    }
+  }
 
   for (bool last = false; !last;) {
     const auto blk = parse_block_header(src + off, src_size - off);

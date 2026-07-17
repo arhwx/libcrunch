@@ -26,9 +26,11 @@ error decode_sequences(const sequences_section_header &header,
                        sequence_tables &tables, sequence *out);
 
 // dst is the whole frame output so far, so matches can reach previous
-// blocks (3.1.1.4, 3.1.1.5)
+// blocks; history is the dictionary content sitting before the frame
+// (3.1.1.4, 3.1.1.5, 5)
 error execute_sequences(const sequence *sequences, std::size_t count,
                         const std::byte *literals, std::size_t literals_size,
+                        const std::byte *history, std::size_t history_size,
                         repeat_offsets &recent, std::byte *dst,
                         std::size_t dst_capacity, std::size_t &written);
 

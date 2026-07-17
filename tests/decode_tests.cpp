@@ -1,6 +1,7 @@
 #include "check.hpp"
 
 #include <crunch/decode.hpp>
+#include <crunch/dictionary.hpp>
 
 #include <cstring>
 #include <vector>
@@ -125,6 +126,42 @@ void test_compressed_block() {
   }
 }
 
+// hello_dict.zst regenerates hello.txt purely from dictionary matches
+void test_dictionary_frame() {
+  const auto dict_file = test::read_file(data_dir + "/hello.dict");
+  const auto original = test::read_file(data_dir + "/hello.txt");
+  const auto frame = test::read_file(data_dir + "/hello_dict.zst");
+  CHECK(!dict_file.empty());
+  CHECK(original.size() == 50);
+  CHECK(!frame.empty());
+  if (dict_file.empty() || original.size() != 50 || frame.empty())
+    return;
+
+  crunch::dictionary dict;
+  CHECK(crunch::parse_dictionary(dict_file.data(), dict_file.size(), dict) ==
+        crunch::error::none);
+
+  std::vector<std::byte> out(original.size());
+  std::size_t consumed = 0;
+  auto r = crunch::decode_frame(frame.data(), frame.size(), out.data(),
+                                out.size(), consumed, &dict);
+  CHECK(r);
+  if (!r)
+    return;
+  CHECK(*r == original.size());
+  CHECK(consumed == frame.size());
+  CHECK(std::memcmp(out.data(), original.data(), original.size()) == 0);
+
+  // the frame names dictionary 3000
+  CHECK(crunch::decode_frame(frame.data(), frame.size(), out.data(), out.size(),
+                             consumed)
+            .err() == crunch::error::wrong_dictionary);
+  dict.id = 2999;
+  CHECK(crunch::decode_frame(frame.data(), frame.size(), out.data(), out.size(),
+                             consumed, &dict)
+            .err() == crunch::error::wrong_dictionary);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -135,5 +172,6 @@ int main(int argc, char **argv) {
   test_skippable_frame();
   test_errors();
   test_compressed_block();
+  test_dictionary_frame();
   return test::report("decode");
 }
