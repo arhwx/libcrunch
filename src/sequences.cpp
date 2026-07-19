@@ -217,11 +217,26 @@ error execute_sequences(const sequence *sequences, std::size_t count,
     }
     if (seq.match_length > dst_capacity - written)
       return error::output_too_small;
-    // overlapping matches repeat the pattern, so copy byte by byte; a
-    // match may start in the history and run into the frame's output
-    for (std::uint32_t j = 0; j < seq.match_length; ++j, ++written)
-      dst[written] = offset > written ? history[history_size - offset + written]
-                                      : dst[written - offset];
+
+    // a match may start in the history and run into the frame's output
+    std::size_t remaining = seq.match_length;
+    if (offset > written) {
+      const std::size_t from_history = offset - written;
+      const std::size_t take =
+          remaining < from_history ? remaining : from_history;
+      std::memcpy(dst + written, history + (history_size - from_history), take);
+      written += take;
+      remaining -= take;
+    }
+
+    std::size_t span = offset;
+    while (remaining > 0) {
+      const std::size_t chunk = std::min(span, remaining);
+      std::memcpy(dst + written, dst + (written - span), chunk);
+      written += chunk;
+      remaining -= chunk;
+      span *= 2;
+    }
   }
 
   const std::size_t leftover = literals_size - literal_pos;
