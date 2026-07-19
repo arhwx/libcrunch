@@ -77,4 +77,86 @@ inline std::uint64_t xxh64(const std::byte *data, std::size_t size,
   return hash;
 }
 
+// same hash as xxh64 over the full input
+class xxh64_state {
+public:
+  xxh64_state() { reset(); }
+
+  void reset() {
+    acc_[0] = xxh_prime_1 + xxh_prime_2;
+    acc_[1] = xxh_prime_2;
+    acc_[2] = 0;
+    acc_[3] = 0 - xxh_prime_1;
+    buffered_ = 0;
+    total_ = 0;
+  }
+
+  void update(const std::byte *data, std::size_t size) {
+    total_ += size;
+    std::size_t i = 0;
+    if (buffered_ > 0) {
+      while (buffered_ < 32 && i < size)
+        buffer_[buffered_++] = data[i++];
+      if (buffered_ < 32)
+        return;
+      consume(buffer_);
+      buffered_ = 0;
+    }
+    for (; size - i >= 32; i += 32)
+      consume(data + i);
+    while (i < size)
+      buffer_[buffered_++] = data[i++];
+  }
+
+  std::uint64_t digest() const {
+    std::uint64_t hash;
+    if (total_ >= 32) {
+      hash = rotl64(acc_[0], 1) + rotl64(acc_[1], 7) + rotl64(acc_[2], 12) +
+             rotl64(acc_[3], 18);
+      hash = xxh_merge(hash, acc_[0]);
+      hash = xxh_merge(hash, acc_[1]);
+      hash = xxh_merge(hash, acc_[2]);
+      hash = xxh_merge(hash, acc_[3]);
+    } else {
+      hash = xxh_prime_5;
+    }
+    hash += total_;
+
+    std::size_t i = 0;
+    for (; buffered_ - i >= 8; i += 8) {
+      hash ^= xxh_round(0, read_le64(buffer_ + i));
+      hash = rotl64(hash, 27) * xxh_prime_1 + xxh_prime_4;
+    }
+    if (buffered_ - i >= 4) {
+      hash ^= read_le32(buffer_ + i) * xxh_prime_1;
+      hash = rotl64(hash, 23) * xxh_prime_2 + xxh_prime_3;
+      i += 4;
+    }
+    for (; i < buffered_; ++i) {
+      hash ^= std::to_integer<std::uint64_t>(buffer_[i]) * xxh_prime_5;
+      hash = rotl64(hash, 11) * xxh_prime_1;
+    }
+
+    hash ^= hash >> 33;
+    hash *= xxh_prime_2;
+    hash ^= hash >> 29;
+    hash *= xxh_prime_3;
+    hash ^= hash >> 32;
+    return hash;
+  }
+
+private:
+  void consume(const std::byte *stripe) {
+    acc_[0] = xxh_round(acc_[0], read_le64(stripe));
+    acc_[1] = xxh_round(acc_[1], read_le64(stripe + 8));
+    acc_[2] = xxh_round(acc_[2], read_le64(stripe + 16));
+    acc_[3] = xxh_round(acc_[3], read_le64(stripe + 24));
+  }
+
+  std::uint64_t acc_[4];
+  std::byte buffer_[32];
+  std::size_t buffered_;
+  std::uint64_t total_;
+};
+
 } // namespace crunch

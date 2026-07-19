@@ -29,6 +29,28 @@ void test_vectors() {
     CHECK(crunch::xxh64(buf.data(), v.size) == v.hash);
 }
 
+// the streaming form must match the hash for any update split
+void test_streaming() {
+  std::array<std::byte, 100> buf{};
+  for (std::size_t i = 0; i < buf.size(); ++i)
+    buf[i] = static_cast<std::byte>(i * 7);
+
+  for (const std::size_t size :
+       {std::size_t{0}, std::size_t{1}, std::size_t{31}, std::size_t{32},
+        std::size_t{33}, std::size_t{100}}) {
+    const std::uint64_t expect = crunch::xxh64(buf.data(), size);
+    for (const std::size_t chunk :
+         {std::size_t{1}, std::size_t{7}, std::size_t{32}, std::size_t{100}}) {
+      crunch::xxh64_state state;
+      for (std::size_t i = 0; i < size; i += chunk) {
+        const std::size_t take = size - i < chunk ? size - i : chunk;
+        state.update(buf.data() + i, take);
+      }
+      CHECK(state.digest() == expect);
+    }
+  }
+}
+
 // frames store the low 4 bytes of the content hash as the checksum (3.1.1)
 void test_content_checksum() {
   const auto content = test::read_file(data_dir + "/hello.txt");
@@ -45,6 +67,7 @@ void test_content_checksum() {
 int main(int argc, char **argv) {
   data_dir = argc > 1 ? argv[1] : "tests/data";
   test_vectors();
+  test_streaming();
   test_content_checksum();
   return test::report("xxhash");
 }

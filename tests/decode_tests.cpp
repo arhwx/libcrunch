@@ -35,6 +35,9 @@ void test_raw_block() { check_roundtrip("random"); }
 // zstd never emits rle blocks, so rle.zst is hand-built, checked with zstd -d
 void test_rle_block() { check_roundtrip("rle"); }
 
+// 512 KB under a 1 KB window, hundreds of compressed blocks
+void test_windowed_frame() { check_roundtrip("window"); }
+
 void test_multi_frame() {
   auto stream = test::read_file(data_dir + "/random.zst");
   const auto second = test::read_file(data_dir + "/rle.zst");
@@ -168,6 +171,7 @@ int main(int argc, char **argv) {
   data_dir = argc > 1 ? argv[1] : "tests/data";
   test_raw_block();
   test_rle_block();
+  test_windowed_frame();
   test_multi_frame();
   test_skippable_frame();
   test_errors();

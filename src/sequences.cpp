@@ -172,8 +172,9 @@ error decode_sequences(const sequences_section_header &header,
 error execute_sequences(const sequence *sequences, std::size_t count,
                         const std::byte *literals, std::size_t literals_size,
                         const std::byte *history, std::size_t history_size,
-                        repeat_offsets &recent, std::byte *dst,
-                        std::size_t dst_capacity, std::size_t &written) {
+                        std::uint64_t window, repeat_offsets &recent,
+                        std::byte *dst, std::size_t dst_capacity,
+                        std::size_t &written) {
   std::size_t literal_pos = 0;
 
   for (std::size_t i = 0; i < count; ++i) {
@@ -206,8 +207,14 @@ error execute_sequences(const sequence *sequences, std::size_t count,
     literal_pos += seq.literals_length;
     written += seq.literals_length;
 
-    if (offset > written + history_size)
+    // dictionary offsets may exceed the window until the output surpasses the
+    // window (3.1.1.3, 5)
+    if (offset > written) {
+      if (written > window || offset - written > history_size)
+        return error::corrupt_bitstream;
+    } else if (offset > window) {
       return error::corrupt_bitstream;
+    }
     if (seq.match_length > dst_capacity - written)
       return error::output_too_small;
     // overlapping matches repeat the pattern, so copy byte by byte; a

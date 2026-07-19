@@ -1,4 +1,5 @@
 #include <crunch/bitstream.hpp>
+#include <crunch/block.hpp>
 #include <crunch/decode.hpp>
 #include <crunch/frame.hpp>
 #include <crunch/literals.hpp>
@@ -9,21 +10,26 @@
 #include <vector>
 
 namespace crunch {
-namespace {
 
-// entropy state shared by a frame's compressed blocks
-struct frame_state {
-  huffman_table literals_table;
-  sequence_tables tables;
-  repeat_offsets recent;
-  bool have_literals_table = false;
-  const std::byte *history = nullptr; // dictionary content
-  std::size_t history_size = 0;
-  std::vector<std::byte> literals; // scratch, sized on first use
-};
+void seed_block_context(block_context &context, const dictionary &dict) {
+  context.history = dict.content;
+  context.history_size = dict.content_size;
+  context.recent = dict.recent_offsets;
+  if (dict.literals_huffman) {
+    context.literals_table = *dict.literals_huffman;
+    context.have_literals_table = true;
+  }
+  if (dict.offset_table && dict.match_length_table &&
+      dict.literals_length_table) {
+    context.tables.offsets = *dict.offset_table;
+    context.tables.match_lengths = *dict.match_length_table;
+    context.tables.literals_lengths = *dict.literals_length_table;
+    context.tables.valid = true;
+  }
+}
 
 error decode_compressed_block(const std::byte *src, std::size_t size,
-                              frame_state &state, std::byte *dst,
+                              block_context &state, std::byte *dst,
                               std::size_t dst_capacity, std::size_t &written,
                               std::uint64_t block_max) {
   auto lit_header = parse_literals_section_header(src, size);
@@ -69,7 +75,7 @@ error decode_compressed_block(const std::byte *src, std::size_t size,
   const error exec_err = execute_sequences(
       sequences.data(), sequences.size(), state.literals.data(),
       lit_header->regenerated_size, state.history, state.history_size,
-      state.recent, dst, dst_capacity, written);
+      state.window, state.recent, dst, dst_capacity, written);
   if (exec_err != error::none)
     return exec_err;
   // Block_Maximum_Size caps the regenerated size too, 3.1.1.2.4
@@ -77,8 +83,6 @@ error decode_compressed_block(const std::byte *src, std::size_t size,
     return error::block_too_large;
   return error::none;
 }
-
-} // namespace
 
 result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
                                  std::byte *dst, std::size_t dst_capacity,
@@ -123,23 +127,10 @@ result<std::size_t> decode_frame(const std::byte *src, std::size_t src_size,
   const std::uint64_t block_max =
       hdr.window_size < block_size_cap ? hdr.window_size : block_size_cap;
   std::size_t written = 0;
-  frame_state state;
-  if (dict != nullptr) {
-    state.history = dict->content;
-    state.history_size = dict->content_size;
-    state.recent = dict->recent_offsets;
-    if (dict->literals_huffman) {
-      state.literals_table = *dict->literals_huffman;
-      state.have_literals_table = true;
-    }
-    if (dict->offset_table && dict->match_length_table &&
-        dict->literals_length_table) {
-      state.tables.offsets = *dict->offset_table;
-      state.tables.match_lengths = *dict->match_length_table;
-      state.tables.literals_lengths = *dict->literals_length_table;
-      state.tables.valid = true;
-    }
-  }
+  block_context state;
+  state.window = hdr.window_size;
+  if (dict != nullptr)
+    seed_block_context(state, *dict);
 
   for (bool last = false; !last;) {
     const auto blk = parse_block_header(src + off, src_size - off);

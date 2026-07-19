@@ -21,6 +21,7 @@ enum class error : std::uint8_t {
   missing_table,         // treeless or repeat mode with no prior table
   bad_dictionary,        // dictionary violates the format in section 5
   wrong_dictionary,      // frame names a dictionary that was not provided
+  window_too_large,      // window exceeds the decoder's configured limit
   unsupported,           // valid input the decoder cannot handle yet
 };
 

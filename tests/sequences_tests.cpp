@@ -228,8 +228,8 @@ void test_execution() {
   std::byte out[32];
   std::size_t written = 0;
   CHECK(crunch::execute_sequences(seqs, 2, bytes(lits), sizeof(lits), nullptr,
-                                  0, recent, out, sizeof(out),
-                                  written) == crunch::error::none);
+                                  0, crunch::window_size_max, recent, out,
+                                  sizeof(out), written) == crunch::error::none);
   CHECK(written == 12);
   CHECK(std::memcmp(out, "abccccddddef", 12) == 0);
   CHECK(recent.value[0] == 1);
@@ -251,8 +251,8 @@ void test_repeat_offsets() {
   std::byte out[32];
   std::size_t written = 0;
   CHECK(crunch::execute_sequences(seqs, 3, bytes(lits), sizeof(lits), nullptr,
-                                  0, recent, out, sizeof(out),
-                                  written) == crunch::error::none);
+                                  0, crunch::window_size_max, recent, out,
+                                  sizeof(out), written) == crunch::error::none);
   CHECK(written == 16);
   CHECK(std::memcmp(out, "abcdefghdededddd", 16) == 0);
   CHECK(recent.value[0] == 1);
@@ -270,7 +270,8 @@ void test_bad_execution() {
     const crunch::sequence seq = {0, 3, 7};
     crunch::repeat_offsets recent;
     CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
-                                    0, recent, out, sizeof(out), written) ==
+                                    0, crunch::window_size_max, recent, out,
+                                    sizeof(out), written) ==
           crunch::error::corrupt_bitstream);
   }
 
@@ -280,7 +281,8 @@ void test_bad_execution() {
     crunch::repeat_offsets recent;
     written = 0;
     CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
-                                    0, recent, out, sizeof(out), written) ==
+                                    0, crunch::window_size_max, recent, out,
+                                    sizeof(out), written) ==
           crunch::error::corrupt_bitstream);
   }
 
@@ -290,7 +292,8 @@ void test_bad_execution() {
     crunch::repeat_offsets recent;
     written = 0;
     CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
-                                    0, recent, out, sizeof(out), written) ==
+                                    0, crunch::window_size_max, recent, out,
+                                    sizeof(out), written) ==
           crunch::error::corrupt_bitstream);
   }
 
@@ -300,7 +303,8 @@ void test_bad_execution() {
     crunch::repeat_offsets recent;
     written = 0;
     CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
-                                    0, recent, out, 4, written) ==
+                                    0, crunch::window_size_max, recent, out, 4,
+                                    written) ==
           crunch::error::output_too_small);
   }
 }
@@ -315,7 +319,8 @@ void test_history() {
   std::byte out[16];
   std::size_t written = 0;
   CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits),
-                                  bytes(history), sizeof(history), recent, out,
+                                  bytes(history), sizeof(history),
+                                  crunch::window_size_max, recent, out,
                                   sizeof(out), written) == crunch::error::none);
   CHECK(written == 5);
   CHECK(std::memcmp(out, "CabCa", 5) == 0);
@@ -323,10 +328,65 @@ void test_history() {
   // offset 6 reaches past the two history bytes
   const crunch::sequence far = {0, 1, 9};
   written = 0;
-  CHECK(crunch::execute_sequences(&far, 1, bytes(lits), sizeof(lits),
-                                  bytes(history), sizeof(history), recent, out,
-                                  sizeof(out),
-                                  written) == crunch::error::corrupt_bitstream);
+  CHECK(crunch::execute_sequences(
+            &far, 1, bytes(lits), sizeof(lits), bytes(history), sizeof(history),
+            crunch::window_size_max, recent, out, sizeof(out),
+            written) == crunch::error::corrupt_bitstream);
+}
+
+// reach into the output is capped by Window_Size, while the dictionary
+// stays reachable beyond it until output surpasses the window (3.1.1.3, 5)
+void test_window_reach() {
+  const unsigned char lits[] = {'a', 'b', 'c', 'd'};
+  std::byte out[32];
+
+  // offset 4 inside the output but over a window of 3
+  {
+    const crunch::sequence seq = {4, 2, 7};
+    crunch::repeat_offsets recent;
+    std::size_t written = 0;
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
+                                    0, 3, recent, out, sizeof(out), written) ==
+          crunch::error::corrupt_bitstream);
+  }
+
+  // the same match fits a window of 4
+  {
+    const crunch::sequence seq = {4, 2, 7};
+    crunch::repeat_offsets recent;
+    std::size_t written = 0;
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits), nullptr,
+                                    0, 4, recent, out, sizeof(out),
+                                    written) == crunch::error::none);
+    CHECK(written == 6);
+    CHECK(std::memcmp(out, "abcdab", 6) == 0);
+  }
+
+  // a dictionary offset over the window is legal while output is within it
+  {
+    const unsigned char history[] = {'x', 'y', 'z'};
+    const unsigned char lit[] = {'C'};
+    const crunch::sequence seq = {1, 2, 7};
+    crunch::repeat_offsets recent;
+    std::size_t written = 0;
+    CHECK(crunch::execute_sequences(
+              &seq, 1, bytes(lit), sizeof(lit), bytes(history), sizeof(history),
+              2, recent, out, sizeof(out), written) == crunch::error::none);
+    CHECK(written == 3);
+    CHECK(std::memcmp(out, "Cxy", 3) == 0);
+  }
+
+  // the dictionary is out of reach once output has surpassed the window
+  {
+    const unsigned char history[] = {'x', 'y', 'z'};
+    const crunch::sequence seq = {4, 2, 8};
+    crunch::repeat_offsets recent;
+    std::size_t written = 0;
+    CHECK(crunch::execute_sequences(&seq, 1, bytes(lits), sizeof(lits),
+                                    bytes(history), sizeof(history), 2, recent,
+                                    out, sizeof(out), written) ==
+          crunch::error::corrupt_bitstream);
+  }
 }
 
 } // namespace
@@ -342,5 +402,6 @@ int main() {
   test_repeat_offsets();
   test_bad_execution();
   test_history();
+  test_window_reach();
   return test::report("sequences");
 }
