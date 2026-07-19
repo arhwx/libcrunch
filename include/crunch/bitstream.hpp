@@ -39,14 +39,18 @@ public:
 
   // huffman decoding peeks a fixed width but only consumes the code
   // length; bits past the stream start read as zero (4.2.2)
-  std::uint32_t peek(unsigned count) const;
+  std::uint32_t peek(unsigned count);
   void advance(unsigned count);
 
   std::size_t bits_left() const { return bits_left_; }
   bool overflowed() const { return overflowed_; }
 
 private:
+  void refill();
+
   const std::byte *data_ = nullptr;
+  std::uint64_t cache_ = 0;
+  std::size_t base_ = 0;
   std::size_t bits_left_ = 0;
   bool overflowed_ = false;
 };
@@ -64,6 +68,7 @@ inline result<bit_reader> bit_reader::from_end(const std::byte *data,
   bit_reader r;
   r.data_ = data;
   r.bits_left_ = (size - 1) * 8 + sentinel;
+  r.base_ = r.bits_left_;
   return r;
 }
 
@@ -110,19 +115,28 @@ private:
   bool overflowed_ = false;
 };
 
-inline std::uint32_t bit_reader::peek(unsigned count) const {
+inline void bit_reader::refill() {
+  const std::size_t top_byte = (bits_left_ + 7) / 8;
+  if (top_byte >= 8) {
+    base_ = (top_byte - 8) * 8;
+    cache_ = read_le64(data_ + (top_byte - 8));
+  } else {
+    base_ = 0;
+    cache_ = 0;
+    for (std::size_t i = 0; i < top_byte; ++i)
+      cache_ |= std::to_integer<std::uint64_t>(data_[i]) << (8 * i);
+  }
+}
+
+inline std::uint32_t bit_reader::peek(unsigned count) {
   const unsigned avail =
       bits_left_ < count ? static_cast<unsigned>(bits_left_) : count;
   if (avail == 0)
     return 0;
-  const std::size_t pos = bits_left_ - avail;
-  const std::byte *p = data_ + pos / 8;
-  const unsigned shift = pos % 8;
-  std::uint64_t acc = 0;
-  for (unsigned got = 0; got < shift + avail; got += 8)
-    acc |= std::to_integer<std::uint64_t>(p[got / 8]) << got;
+  if (bits_left_ - avail < base_)
+    refill();
   const std::uint32_t value =
-      static_cast<std::uint32_t>(acc >> shift) &
+      static_cast<std::uint32_t>(cache_ >> (bits_left_ - avail - base_)) &
       static_cast<std::uint32_t>((std::uint64_t{1} << avail) - 1);
   return value << (count - avail);
 }
@@ -137,18 +151,17 @@ inline void bit_reader::advance(unsigned count) {
 }
 
 inline std::uint32_t bit_reader::read(unsigned count) {
+  if (count == 0)
+    return 0;
   if (count > bits_left_) {
     overflowed_ = true;
     bits_left_ = 0;
     return 0;
   }
+  if (bits_left_ - count < base_)
+    refill();
   bits_left_ -= count;
-  const std::byte *p = data_ + bits_left_ / 8;
-  const unsigned shift = bits_left_ % 8;
-  std::uint64_t acc = 0;
-  for (unsigned got = 0; got < shift + count; got += 8)
-    acc |= std::to_integer<std::uint64_t>(p[got / 8]) << got;
-  return static_cast<std::uint32_t>(acc >> shift) &
+  return static_cast<std::uint32_t>(cache_ >> (bits_left_ - base_)) &
          static_cast<std::uint32_t>((std::uint64_t{1} << count) - 1);
 }
 
